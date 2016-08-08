@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Copyright 2015 Google Inc.
+  Copyright 2016 Google Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -16,13 +16,5 @@
   -->
 
 <resources>
-
-    <attr name="lineHeightHint" format="dimension" />
-
-    <declare-styleable name="BaselineGridTextView">
-        <attr name="lineHeightMultiplierHint" format="float" />
-        <attr name="lineHeightHint" />
-        <attr name="maxLinesByHeight" format="boolean" />
-    </declare-styleable>
-
+    <item type="id" name="tag_reflow_data" />
 </resources>

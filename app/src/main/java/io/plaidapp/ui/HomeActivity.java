@@ -143,6 +143,7 @@ public class HomeActivity extends Activity {
         if (savedInstanceState == null) {
             animateToolbar();
         }
+        setExitSharedElementCallback(FeedAdapter.createSharedElementReenterCallback(this));
 
         dribbblePrefs = DribbblePrefs.get(this);
         designerNewsPrefs = DesignerNewsPrefs.get(this);
@@ -169,6 +170,7 @@ public class HomeActivity extends Activity {
             }
         };
         adapter = new FeedAdapter(this, dataManager, columns, PocketUtils.isPocketInstalled(this));
+
         grid.setAdapter(adapter);
         layoutManager = new GridLayoutManager(this, columns);
         layoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
@@ -198,11 +200,13 @@ public class HomeActivity extends Activity {
                 ViewGroup.MarginLayoutParams lpToolbar = (ViewGroup.MarginLayoutParams) toolbar
                         .getLayoutParams();
                 lpToolbar.topMargin += insets.getSystemWindowInsetTop();
+                lpToolbar.leftMargin += insets.getSystemWindowInsetLeft();
                 lpToolbar.rightMargin += insets.getSystemWindowInsetRight();
                 toolbar.setLayoutParams(lpToolbar);
 
                 // inset the grid top by statusbar+toolbar & the bottom by the navbar (don't clip)
-                grid.setPadding(grid.getPaddingLeft(),
+                grid.setPadding(
+                        grid.getPaddingLeft() + insets.getSystemWindowInsetLeft(), // landscape
                         insets.getSystemWindowInsetTop() + ViewUtils.getActionBarSize
                                 (HomeActivity.this),
                         grid.getPaddingRight() + insets.getSystemWindowInsetRight(), // landscape
@@ -274,6 +278,35 @@ public class HomeActivity extends Activity {
             monitoringConnectivity = false;
         }
         super.onPause();
+    }
+
+    @Override
+    public void onActivityReenter(int resultCode, Intent data) {
+        if (data == null || resultCode != RESULT_OK
+                || !data.hasExtra(DribbbleShot.RESULT_EXTRA_SHOT_ID)) return;
+
+        // When reentering, if the shared element is no longer on screen (e.g. after an
+        // orientation change) then scroll it into view.
+        final long sharedShotId = data.getLongExtra(DribbbleShot.RESULT_EXTRA_SHOT_ID, -1l);
+        if (sharedShotId != -1l                                             // returning from a shot
+                && adapter.getDataItemCount() > 0                           // grid populated
+                && grid.findViewHolderForItemId(sharedShotId) == null) {    // view not attached
+            final int position = adapter.getItemPosition(sharedShotId);
+            if (position == RecyclerView.NO_POSITION) return;
+
+            // delay the transition until our shared element is on-screen i.e. has been laid out
+            postponeEnterTransition();
+            grid.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(View v, int l, int t, int r, int b,
+                                           int oL, int oT, int oR, int oB) {
+                    grid.removeOnLayoutChangeListener(this);
+                    startPostponedEnterTransition();
+                }
+            });
+            grid.scrollToPosition(position);
+            toolbar.setTranslationZ(-1f);
+        }
     }
 
     @Override

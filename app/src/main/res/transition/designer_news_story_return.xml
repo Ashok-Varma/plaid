@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Copyright 2015 Google Inc.
+  Copyright 2016 Google Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -30,19 +30,20 @@
             <target android:excludeId="@android:id/navigationBarBackground" />
             <target android:excludeId="@android:id/statusBarBackground" />
             <target android:excludeId="@id/background" />
+            <target android:excludeId="@id/story_toolbar" />
         </targets>
     </transition>
 
-    <fade android:duration="200">
+    <fade android:duration="120">
         <targets>
-            <target android:targetId="@id/background" />
+            <target android:excludeId="@id/story_toolbar" />
         </targets>
     </fade>
 
-    <fade android:duration="300">
+    <!-- fade out the up arrow rapidly so that it doesn't interfere with the transition -->
+    <fade android:duration="40">
         <targets>
-            <target android:targetId="@android:id/navigationBarBackground" />
-            <target android:targetId="@android:id/statusBarBackground" />
+            <target android:targetId="@id/story_toolbar" />
         </targets>
     </fade>
 

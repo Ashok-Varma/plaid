@@ -95,6 +95,7 @@ import io.plaidapp.util.AnimUtils;
 import io.plaidapp.util.ColorUtils;
 import io.plaidapp.util.HtmlUtils;
 import io.plaidapp.util.ImeUtils;
+import io.plaidapp.util.ViewOffsetHelper;
 import io.plaidapp.util.ViewUtils;
 import io.plaidapp.util.customtabs.CustomTabActivityHelper;
 import io.plaidapp.util.glide.CircleTransform;
@@ -110,6 +111,7 @@ import static io.plaidapp.util.AnimUtils.getLinearOutSlowInInterpolator;
 public class DribbbleShot extends Activity {
 
     public final static String EXTRA_SHOT = "EXTRA_SHOT";
+    public final static String RESULT_EXTRA_SHOT_ID = "RESULT_EXTRA_SHOT_ID";
     private static final int RC_LOGIN_LIKE = 0;
     private static final int RC_LOGIN_COMMENT = 1;
     private static final float SCRIM_ADJUSTMENT = 0.075f;
@@ -152,7 +154,6 @@ public class DribbbleShot extends Activity {
         dribbblePrefs = DribbblePrefs.get(this);
         getWindow().getSharedElementReturnTransition().addListener(shotReturnHomeListener);
         circleTransform = new CircleTransform(this);
-
         ButterKnife.bind(this);
         View shotDescription = getLayoutInflater().inflate(R.layout.dribbble_shot_description,
                 commentsList, false);
@@ -173,21 +174,21 @@ public class DribbbleShot extends Activity {
         back.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                expandImageAndFinish();
+                setResultAndFinish();
             }
         });
         fab.setOnClickListener(fabClick);
         chromeFader = new ElasticDragDismissFrameLayout.SystemChromeFader(this) {
             @Override
             public void onDragDismissed() {
-                expandImageAndFinish();
+                setResultAndFinish();
             }
         };
 
         final Intent intent = getIntent();
         if (intent.hasExtra(EXTRA_SHOT)) {
             shot = intent.getParcelableExtra(EXTRA_SHOT);
-            bindShot(true, savedInstanceState != null);
+            bindShot(true);
         } else if (intent.getData() != null) {
             final HttpUrl url = HttpUrl.parse(intent.getDataString());
             if (url.pathSize() == 2 && url.pathSegments().get(0).equals("shots")) {
@@ -200,7 +201,7 @@ public class DribbbleShot extends Activity {
                         @Override
                         public void onResponse(Call<Shot> call, Response<Shot> response) {
                             shot = response.body();
-                            bindShot(false, true);
+                            bindShot(false);
                         }
 
                         @Override
@@ -253,12 +254,12 @@ public class DribbbleShot extends Activity {
 
     @Override
     public void onBackPressed() {
-        expandImageAndFinish();
+        setResultAndFinish();
     }
 
     @Override
     public boolean onNavigateUp() {
-        expandImageAndFinish();
+        setResultAndFinish();
         return true;
     }
 
@@ -267,7 +268,7 @@ public class DribbbleShot extends Activity {
         outContent.setWebUri(Uri.parse(shot.url));
     }
 
-    private void bindShot(final boolean postponeEnterTransition, final boolean animateFabManually) {
+    private void bindShot(final boolean postponeEnterTransition) {
         final Resources res = getResources();
 
         // load the main image
@@ -289,7 +290,7 @@ public class DribbbleShot extends Activity {
             public boolean onPreDraw() {
                 imageView.getViewTreeObserver().removeOnPreDrawListener(this);
                 calculateFabPosition();
-                enterAnimation(animateFabManually);
+                enterAnimation();
                 if (postponeEnterTransition) startPostponedEnterTransition();
                 return true;
             }
@@ -638,22 +639,11 @@ public class DribbbleShot extends Activity {
         });
     }
 
-    private void expandImageAndFinish() {
-        if (imageView.getOffset() != 0f) {
-            Animator expandImage = ObjectAnimator.ofFloat(imageView, ParallaxScrimageView.OFFSET,
-                    0f);
-            expandImage.setDuration(80);
-            expandImage.setInterpolator(getFastOutSlowInInterpolator(this));
-            expandImage.addListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    finishAfterTransition();
-                }
-            });
-            expandImage.start();
-        } else {
-            finishAfterTransition();
-        }
+    private void setResultAndFinish() {
+        final Intent resultData = new Intent();
+        resultData.putExtra(RESULT_EXTRA_SHOT_ID, shot.id);
+        setResult(RESULT_OK, resultData);
+        finishAfterTransition();
     }
 
     private void calculateFabPosition() {
@@ -667,10 +657,10 @@ public class DribbbleShot extends Activity {
 
     /**
      * Animate in the title, description and author – can't do this in a content transition as they
-     * are within the ListView so do it manually.  Also handle the FAB tanslation here so that it
+     * are within the ListView so do it manually.  Also animate the FAB translation here so that it
      * plays nicely with #calculateFabPosition
      */
-    private void enterAnimation(boolean animateFabManually) {
+    private void enterAnimation() {
         Interpolator interp = getFastOutSlowInInterpolator(this);
         int offset = title.getHeight();
         viewEnterAnimation(title, offset, interp);
@@ -678,15 +668,8 @@ public class DribbbleShot extends Activity {
             offset *= 1.5f;
             viewEnterAnimation(description, offset, interp);
         }
-        // animate the fab without touching the alpha as this is handled in the content transition
         offset *= 1.5f;
-        float fabTransY = fab.getTranslationY();
-        fab.setTranslationY(fabTransY + offset);
-        fab.animate()
-                .translationY(fabTransY)
-                .setDuration(600)
-                .setInterpolator(interp)
-                .start();
+        fabEnterAnimation(interp, offset);
         offset *= 1.5f;
         viewEnterAnimation(shotActions, offset, interp);
         offset *= 1.5f;
@@ -695,34 +678,58 @@ public class DribbbleShot extends Activity {
         viewEnterAnimation(shotTimeAgo, offset, interp);
         back.animate()
                 .alpha(1f)
-                .setDuration(600)
+                .setDuration(600L)
                 .setInterpolator(interp)
                 .start();
-
-        if (animateFabManually) {
-            // we rely on the window enter content transition to show the fab. This isn't run on
-            // orientation changes so manually show it.
-            Animator showFab = ObjectAnimator.ofPropertyValuesHolder(fab,
-                    PropertyValuesHolder.ofFloat(View.ALPHA, 0f, 1f),
-                    PropertyValuesHolder.ofFloat(View.SCALE_X, 0f, 1f),
-                    PropertyValuesHolder.ofFloat(View.SCALE_Y, 0f, 1f));
-            showFab.setStartDelay(300L);
-            showFab.setDuration(300L);
-            showFab.setInterpolator(getLinearOutSlowInInterpolator(this));
-            showFab.start();
-        }
     }
 
     private void viewEnterAnimation(View view, float offset, Interpolator interp) {
         view.setTranslationY(offset);
-        view.setAlpha(0.8f);
+        view.setAlpha(0.6f);
         view.animate()
                 .translationY(0f)
                 .alpha(1f)
-                .setDuration(600)
+                .setDuration(600L)
                 .setInterpolator(interp)
                 .setListener(null)
                 .start();
+    }
+
+    private void fabEnterAnimation(Interpolator interp, int offset) {
+        // FAB should enter upwards with content and also scale/fade. As the FAB uses
+        // translationY to position itself on the title seam, we can animating this property.
+        // Instead animate the view's layout position (which is a bit more involved).
+        final ViewOffsetHelper fabOffset = new ViewOffsetHelper(fab);
+        final View.OnLayoutChangeListener fabLayout = new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int left, int top, int right, int bottom, int
+                    oldLeft, int oldTop, int oldRight, int oldBottom) {
+                fabOffset.onViewLayout();
+            }
+        };
+
+        fab.addOnLayoutChangeListener(fabLayout);
+        fabOffset.setTopAndBottomOffset(offset);
+        Animator fabMovement = ObjectAnimator.ofInt(fabOffset, ViewOffsetHelper.OFFSET_Y, 0);
+        fabMovement.setDuration(600L);
+        fabMovement.setInterpolator(interp);
+        fabMovement.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                fab.removeOnLayoutChangeListener(fabLayout);
+            }
+        });
+        fabMovement.start();
+
+        fab.setAlpha(0f);
+        Animator showFab = ObjectAnimator.ofPropertyValuesHolder(fab,
+                PropertyValuesHolder.ofFloat(View.ALPHA, 0f, 1f),
+                PropertyValuesHolder.ofFloat(View.SCALE_X, 0f, 1f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, 0f, 1f));
+        showFab.setStartDelay(300L);
+        showFab.setDuration(300L);
+        showFab.setInterpolator(getLinearOutSlowInInterpolator(this));
+        showFab.start();
     }
 
     private void doLike() {

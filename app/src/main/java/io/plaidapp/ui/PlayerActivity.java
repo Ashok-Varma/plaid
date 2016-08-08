@@ -127,8 +127,10 @@ public class PlayerActivity extends Activity {
         draggableFrame.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
-                ((ViewGroup.MarginLayoutParams) draggableFrame.getLayoutParams()).rightMargin
-                        += insets.getSystemWindowInsetRight(); // landscape
+                final ViewGroup.MarginLayoutParams lpFrame = (ViewGroup.MarginLayoutParams)
+                        draggableFrame.getLayoutParams();
+                lpFrame.leftMargin += insets.getSystemWindowInsetLeft();    // landscape
+                lpFrame.rightMargin += insets.getSystemWindowInsetRight();  // landscape
                 ((ViewGroup.MarginLayoutParams) avatar.getLayoutParams()).topMargin
                     += insets.getSystemWindowInsetTop();
                 ViewUtils.setPaddingTop(playerDescription, insets.getSystemWindowInsetTop());
@@ -138,6 +140,7 @@ public class PlayerActivity extends Activity {
                 return insets;
             }
         });
+        setExitSharedElementCallback(FeedAdapter.createSharedElementReenterCallback(this));
     }
 
     @Override
@@ -158,6 +161,34 @@ public class PlayerActivity extends Activity {
             dataManager.cancelLoading();
         }
         super.onDestroy();
+    }
+
+    @Override
+    public void onActivityReenter(int resultCode, Intent data) {
+        if (data == null || resultCode != RESULT_OK
+                || !data.hasExtra(DribbbleShot.RESULT_EXTRA_SHOT_ID)) return;
+
+        // When reentering, if the shared element is no longer on screen (e.g. after an
+        // orientation change) then scroll it into view.
+        final long sharedShotId = data.getLongExtra(DribbbleShot.RESULT_EXTRA_SHOT_ID, -1l);
+        if (sharedShotId != -1l                                             // returning from a shot
+                && adapter.getDataItemCount() > 0                           // grid populated
+                && shots.findViewHolderForItemId(sharedShotId) == null) {   // view not attached
+            final int position = adapter.getItemPosition(sharedShotId);
+            if (position == RecyclerView.NO_POSITION) return;
+
+            // delay the transition until our shared element is on-screen i.e. has been laid out
+            postponeEnterTransition();
+            shots.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(View v, int l, int t, int r, int b,
+                                           int oL, int oT, int oR, int oB) {
+                    shots.removeOnLayoutChangeListener(this);
+                    startPostponedEnterTransition();
+                }
+            });
+            shots.scrollToPosition(position);
+        }
     }
 
     private void bindPlayer() {
