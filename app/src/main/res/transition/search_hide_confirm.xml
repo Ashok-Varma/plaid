@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Copyright 2015 Google Inc.
+  Copyright 2016 Google Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -15,27 +15,26 @@
   limitations under the License.
   -->
 
-<animated-selector
+<transitionSet
     xmlns:android="http://schemas.android.com/apk/res/android"
-    android:constantSize="true">
-
-    <item
-        android:id="@+id/focused"
-        android:state_activated="true"
-        android:drawable="@drawable/ic_comment_add" />
-
-    <item
-        android:id="@+id/not_focused"
-        android:drawable="@drawable/ic_comment_lines" />
+    xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <transition
-        android:fromId="@id/not_focused"
-        android:toId="@id/focused"
-        android:drawable="@drawable/avd_comment_to_add" />
+        class="io.plaidapp.ui.transitions.CircularReveal"
+        app:endRadius="@dimen/fab_radius"
+        android:duration="150"
+        android:interpolator="@android:interpolator/fast_out_slow_in">
+        <targets>
+            <target android:targetId="@id/confirm_save_container" />
+        </targets>
+    </transition>
 
-    <transition
-        android:fromId="@id/focused"
-        android:toId="@id/not_focused"
-        android:drawable="@drawable/avd_add_to_comment" />
+    <fade
+        android:duration="150"
+        android:interpolator="@android:interpolator/fast_out_linear_in">
+        <targets>
+            <target android:targetId="@id/results_scrim" />
+        </targets>
+    </fade>
 
-</animated-selector>
+</transitionSet>

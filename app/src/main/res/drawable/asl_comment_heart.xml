@@ -15,9 +15,7 @@
   limitations under the License.
   -->
 
-<animated-selector
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:constantSize="true">
+<animated-selector xmlns:android="http://schemas.android.com/apk/res/android">
 
     <item
         android:id="@+id/liked"
@@ -26,7 +24,7 @@
 
     <item
         android:id="@+id/not_liked"
-        android:drawable="@drawable/ic_heart_empty_24dp"/>
+        android:drawable="@drawable/ic_heart_empty_24dp" />
 
     <transition
         android:fromId="@id/not_liked"
@@ -44,6 +42,7 @@
                 android:animation="@animator/comment_fade_empty_heart" />
 
         </animated-vector>
+
     </transition>
 
 </animated-selector>

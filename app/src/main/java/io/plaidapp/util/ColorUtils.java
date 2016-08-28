@@ -17,7 +17,6 @@
 package io.plaidapp.util;
 
 import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.support.annotation.CheckResult;
 import android.support.annotation.ColorInt;
 import android.support.annotation.FloatRange;
@@ -55,23 +54,6 @@ public class ColorUtils {
     public static @CheckResult @ColorInt int modifyAlpha(@ColorInt int color,
                                                       @FloatRange(from = 0f, to = 1f) float alpha) {
         return modifyAlpha(color, (int) (255f * alpha));
-    }
-
-    /**
-     * Blend {@code color1} and {@code color2} using the given ratio.
-     *
-     * @param ratio of which to blend. 0.0 will return {@code color1}, 0.5 will give an even blend,
-     *              1.0 will return {@code color2}.
-     */
-    public static @CheckResult @ColorInt int blendColors(@ColorInt int color1,
-                                            @ColorInt int color2,
-                                            @FloatRange(from = 0f, to = 1f) float ratio) {
-        final float inverseRatio = 1f - ratio;
-        float a = (Color.alpha(color1) * inverseRatio) + (Color.alpha(color2) * ratio);
-        float r = (Color.red(color1) * inverseRatio) + (Color.red(color2) * ratio);
-        float g = (Color.green(color1) * inverseRatio) + (Color.green(color2) * ratio);
-        float b = (Color.blue(color1) * inverseRatio) + (Color.blue(color2) * ratio);
-        return Color.argb((int) a, (int) r, (int) g, (int) b);
     }
 
     /**
@@ -159,7 +141,6 @@ public class ColorUtils {
         } else {
             lightnessMultiplier = 1f - lightnessMultiplier;
         }
-
 
         hsl[2] = MathUtils.constrain(0f, 1f, hsl[2] * lightnessMultiplier);
         return android.support.v4.graphics.ColorUtils.HSLToColor(hsl);
