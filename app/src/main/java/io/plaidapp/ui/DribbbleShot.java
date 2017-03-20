@@ -16,10 +16,6 @@
 
 package io.plaidapp.ui;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.ObjectAnimator;
-import android.animation.PropertyValuesHolder;
 import android.animation.ValueAnimator;
 import android.annotation.TargetApi;
 import android.app.Activity;
@@ -51,12 +47,10 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
-import android.view.animation.Interpolator;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -94,7 +88,6 @@ import io.plaidapp.util.ColorUtils;
 import io.plaidapp.util.HtmlUtils;
 import io.plaidapp.util.ImeUtils;
 import io.plaidapp.util.TransitionUtils;
-import io.plaidapp.util.ViewOffsetHelper;
 import io.plaidapp.util.ViewUtils;
 import io.plaidapp.util.customtabs.CustomTabActivityHelper;
 import io.plaidapp.util.glide.CircleTransform;
@@ -105,7 +98,6 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 import static io.plaidapp.util.AnimUtils.getFastOutSlowInInterpolator;
-import static io.plaidapp.util.AnimUtils.getLinearOutSlowInInterpolator;
 
 public class DribbbleShot extends Activity {
 
@@ -120,31 +112,30 @@ public class DribbbleShot extends Activity {
     @BindView(R.id.shot) ParallaxScrimageView imageView;
     @BindView(R.id.dribbble_comments) RecyclerView commentsList;
     @BindView(R.id.fab_heart) FABToggle fab;
-    private View shotDescription;
-    private View shotSpacer;
+    View shotDescription;
+    View shotSpacer;
+    Button likeCount;
+    Button viewCount;
+    Button share;
+    ImageView playerAvatar;
+    EditText enterComment;
+    ImageButton postComment;
     private View title;
     private View description;
-    private LinearLayout shotActions;
-    private Button likeCount;
-    private Button viewCount;
-    private Button share;
     private TextView playerName;
-    private ImageView playerAvatar;
     private TextView shotTimeAgo;
     private View commentFooter;
     private ImageView userAvatar;
-    private EditText enterComment;
-    private ImageButton postComment;
-
-    private Shot shot;
-    private int fabOffset;
-    private DribbblePrefs dribbblePrefs;
-    private boolean performingLike;
-    private boolean allowComment;
-    private CircleTransform circleTransform;
     private ElasticDragDismissFrameLayout.SystemChromeFader chromeFader;
-    private CommentsAdapter adapter;
-    private CommentAnimator commentAnimator;
+
+    Shot shot;
+    int fabOffset;
+    DribbblePrefs dribbblePrefs;
+    boolean performingLike;
+    boolean allowComment;
+    CircleTransform circleTransform;
+    CommentsAdapter adapter;
+    CommentAnimator commentAnimator;
     @BindDimen(R.dimen.large_avatar_size) int largeAvatarSize;
     @BindDimen(R.dimen.z_card) int cardElevation;
 
@@ -153,7 +144,6 @@ public class DribbbleShot extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_dribbble_shot);
         dribbblePrefs = DribbblePrefs.get(this);
-        getWindow().getSharedElementReturnTransition().addListener(shotReturnHomeListener);
         circleTransform = new CircleTransform(this);
         ButterKnife.bind(this);
         shotDescription = getLayoutInflater().inflate(R.layout.dribbble_shot_description,
@@ -161,13 +151,12 @@ public class DribbbleShot extends Activity {
         shotSpacer = shotDescription.findViewById(R.id.shot_spacer);
         title = shotDescription.findViewById(R.id.shot_title);
         description = shotDescription.findViewById(R.id.shot_description);
-        shotActions = (LinearLayout) shotDescription.findViewById(R.id.shot_actions);
         likeCount = (Button) shotDescription.findViewById(R.id.shot_like_count);
         viewCount = (Button) shotDescription.findViewById(R.id.shot_view_count);
         share = (Button) shotDescription.findViewById(R.id.shot_share_action);
         playerName = (TextView) shotDescription.findViewById(R.id.player_name);
         playerAvatar = (ImageView) shotDescription.findViewById(R.id.player_avatar);
-        shotTimeAgo = (TextView) shotDescription.findViewById(R.id.shot_time_ago);;
+        shotTimeAgo = (TextView) shotDescription.findViewById(R.id.shot_time_ago);
 
         setupCommenting();
         commentsList.addOnScrollListener(scrollListener);
@@ -269,7 +258,36 @@ public class DribbbleShot extends Activity {
         outContent.setWebUri(Uri.parse(shot.url));
     }
 
-    private void bindShot(final boolean postponeEnterTransition) {
+    public void postComment(View view) {
+        if (dribbblePrefs.isLoggedIn()) {
+            if (TextUtils.isEmpty(enterComment.getText())) return;
+            enterComment.setEnabled(false);
+            final Call<Comment> postCommentCall = dribbblePrefs.getApi().postComment(
+                    shot.id, enterComment.getText().toString().trim());
+            postCommentCall.enqueue(new Callback<Comment>() {
+                @Override
+                public void onResponse(Call<Comment> call, Response<Comment> response) {
+                    loadComments();
+                    enterComment.getText().clear();
+                    enterComment.setEnabled(true);
+                }
+
+                @Override
+                public void onFailure(Call<Comment> call, Throwable t) {
+                    enterComment.setEnabled(true);
+                }
+            });
+        } else {
+            Intent login = new Intent(DribbbleShot.this, DribbbleLogin.class);
+            FabTransform.addExtras(login, ContextCompat.getColor(
+                    DribbbleShot.this, R.color.background_light), R.drawable.ic_comment_add);
+            ActivityOptions options = ActivityOptions.makeSceneTransitionAnimation(
+                    DribbbleShot.this, postComment, getString(R.string.transition_dribbble_login));
+            startActivityForResult(login, RC_LOGIN_COMMENT, options.toBundle());
+        }
+    }
+
+    void bindShot(final boolean postponeEnterTransition) {
         final Resources res = getResources();
 
         // load the main image
@@ -285,13 +303,12 @@ public class DribbbleShot extends Activity {
         shotSpacer.setOnClickListener(shotClick);
 
         if (postponeEnterTransition) postponeEnterTransition();
-        imageView.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver
-                .OnPreDrawListener() {
+        imageView.getViewTreeObserver().addOnPreDrawListener(
+                new ViewTreeObserver.OnPreDrawListener() {
             @Override
             public boolean onPreDraw() {
                 imageView.getViewTreeObserver().removeOnPreDrawListener(this);
                 calculateFabPosition();
-                enterAnimation();
                 if (postponeEnterTransition) startPostponedEnterTransition();
                 return true;
             }
@@ -387,6 +404,8 @@ public class DribbbleShot extends Activity {
             shotTimeAgo.setVisibility(View.GONE);
         }
 
+        commentAnimator = new CommentAnimator();
+        commentsList.setItemAnimator(commentAnimator);
         adapter = new CommentsAdapter(shotDescription, commentFooter, shot.comments_count,
                 getResources().getInteger(R.integer.comment_expand_collapse_duration));
         commentsList.setAdapter(adapter);
@@ -395,15 +414,13 @@ public class DribbbleShot extends Activity {
                 res.getDimensionPixelSize(R.dimen.divider_height),
                 res.getDimensionPixelSize(R.dimen.keyline_1),
                 ContextCompat.getColor(this, R.color.divider)));
-        commentAnimator = new CommentAnimator();
-        commentsList.setItemAnimator(commentAnimator);
         if (shot.comments_count != 0) {
             loadComments();
         }
         checkLiked();
     }
 
-    private void reportUrlError() {
+    void reportUrlError() {
         Snackbar.make(draggableFrame, R.string.bad_dribbble_shot_url, Snackbar.LENGTH_SHORT).show();
         draggableFrame.postDelayed(new Runnable() {
             @Override
@@ -411,34 +428,6 @@ public class DribbbleShot extends Activity {
                 finishAfterTransition();
             }
         }, 3000L);
-    }
-
-    private void setupCommenting() {
-        allowComment = !dribbblePrefs.isLoggedIn()
-                || (dribbblePrefs.isLoggedIn() && dribbblePrefs.userCanPost());
-        if (allowComment && commentFooter == null) {
-            commentFooter = getLayoutInflater().inflate(R.layout.dribbble_enter_comment,
-                    commentsList, false);
-            userAvatar = (ForegroundImageView) commentFooter.findViewById(R.id.avatar);
-            enterComment = (EditText) commentFooter.findViewById(R.id.comment);
-            postComment = (ImageButton) commentFooter.findViewById(R.id.post_comment);
-            enterComment.setOnFocusChangeListener(enterCommentFocus);
-        } else if (!allowComment && commentFooter != null) {
-            adapter.removeCommentingFooter();
-            commentFooter = null;
-            Toast.makeText(getApplicationContext(),
-                    R.string.prospects_cant_post, Toast.LENGTH_SHORT).show();
-        }
-
-        if (allowComment
-                && dribbblePrefs.isLoggedIn()
-                && !TextUtils.isEmpty(dribbblePrefs.getUserAvatar())) {
-            Glide.with(this)
-                    .load(dribbblePrefs.getUserAvatar())
-                    .transform(circleTransform)
-                    .placeholder(R.drawable.ic_player)
-                    .into(userAvatar);
-        }
     }
 
     private View.OnClickListener shotClick = new View.OnClickListener() {
@@ -452,14 +441,14 @@ public class DribbbleShot extends Activity {
      * We run a transition to expand/collapse comments. Scrolling the RecyclerView while this is
      * running causes issues, so we consume touch events while the transition runs.
      */
-    private View.OnTouchListener touchEater = new View.OnTouchListener() {
+    View.OnTouchListener touchEater = new View.OnTouchListener() {
         @Override
         public boolean onTouch(View view, MotionEvent motionEvent) {
             return true;
         }
     };
 
-    private void openLink(String url) {
+    void openLink(String url) {
         CustomTabActivityHelper.openCustomTab(
                 DribbbleShot.this,
                 new CustomTabsIntent.Builder()
@@ -571,6 +560,13 @@ public class DribbbleShot extends Activity {
             // kick off an anim (via animated state list) on the post button. see
             // @drawable/ic_add_comment
             postComment.setActivated(hasFocus);
+
+            // prevent content hovering over image when not pinned.
+            if(hasFocus) {
+                imageView.bringToFront();
+                imageView.setOffset(-imageView.getHeight());
+                imageView.setImmediatePin(true);
+            }
         }
     };
 
@@ -617,29 +613,7 @@ public class DribbbleShot extends Activity {
         }
     };
 
-    private Transition.TransitionListener shotReturnHomeListener =
-            new TransitionUtils.TransitionListenerAdapter() {
-        @Override
-        public void onTransitionStart(Transition transition) {
-            super.onTransitionStart(transition);
-            // hide the fab as for some reason it jumps position??  TODO work out why
-            fab.setVisibility(View.INVISIBLE);
-            // fade out the "toolbar" & list as we don't want them to be visible during return
-            // animation
-            back.animate()
-                    .alpha(0f)
-                    .setDuration(100)
-                    .setInterpolator(getLinearOutSlowInInterpolator(DribbbleShot.this));
-            imageView.setElevation(1f);
-            back.setElevation(0f);
-            commentsList.animate()
-                    .alpha(0f)
-                    .setDuration(50)
-                    .setInterpolator(getLinearOutSlowInInterpolator(DribbbleShot.this));
-        }
-    };
-
-    private void loadComments() {
+    void loadComments() {
         final Call<List<Comment>> commentsCall =
                 dribbblePrefs.getApi().getComments(shot.id, 0, DribbbleService.PER_PAGE_MAX);
         commentsCall.enqueue(new Callback<List<Comment>>() {
@@ -655,14 +629,14 @@ public class DribbbleShot extends Activity {
         });
     }
 
-    private void setResultAndFinish() {
+    void setResultAndFinish() {
         final Intent resultData = new Intent();
         resultData.putExtra(RESULT_EXTRA_SHOT_ID, shot.id);
         setResult(RESULT_OK, resultData);
         finishAfterTransition();
     }
 
-    private void calculateFabPosition() {
+    void calculateFabPosition() {
         // calculate 'natural' position i.e. with full height image. Store it for use when scrolling
         fabOffset = imageView.getHeight() + title.getHeight() - (fab.getHeight() / 2);
         fab.setOffset(fabOffset);
@@ -671,83 +645,7 @@ public class DribbbleShot extends Activity {
         fab.setMinOffset(imageView.getMinimumHeight() - (fab.getHeight() / 2));
     }
 
-    /**
-     * Animate in the title, description and author – can't do this in the window enter transition
-     * as they get added to the RecyclerView later so do it manually.  Also animate the FAB
-     * translation here so that it plays nicely with #calculateFabPosition
-     **/
-    private void enterAnimation() {
-        Interpolator interp = getFastOutSlowInInterpolator(this);
-        int offset = title.getHeight();
-        viewEnterAnimation(title, offset, interp);
-        if (description.getVisibility() == View.VISIBLE) {
-            offset *= 1.5f;
-            viewEnterAnimation(description, offset, interp);
-        }
-        offset *= 1.5f;
-        fabEnterAnimation(interp, offset);
-        offset *= 1.5f;
-        viewEnterAnimation(shotActions, offset, interp);
-        offset *= 1.5f;
-        viewEnterAnimation(playerName, offset, interp);
-        viewEnterAnimation(playerAvatar, offset, interp);
-        viewEnterAnimation(shotTimeAgo, offset, interp);
-        back.animate()
-                .alpha(1f)
-                .setDuration(600L)
-                .setInterpolator(interp)
-                .start();
-    }
-
-    private void viewEnterAnimation(View view, float offset, Interpolator interp) {
-        view.setTranslationY(offset);
-        view.setAlpha(0.6f);
-        view.animate()
-                .translationY(0f)
-                .alpha(1f)
-                .setDuration(600L)
-                .setInterpolator(interp)
-                .setListener(null)
-                .start();
-    }
-
-    private void fabEnterAnimation(Interpolator interp, int offset) {
-        // FAB should enter upwards with content and also scale/fade. As the FAB uses
-        // translationY to position itself on the title seam, we can animating this property.
-        // Instead animate the view's layout position (which is a bit more involved).
-        final ViewOffsetHelper fabOffset = new ViewOffsetHelper(fab);
-        final View.OnLayoutChangeListener fabLayout = new View.OnLayoutChangeListener() {
-            @Override
-            public void onLayoutChange(View v, int left, int top, int right, int bottom, int
-                    oldLeft, int oldTop, int oldRight, int oldBottom) {
-                fabOffset.onViewLayout();
-            }
-        };
-
-        fab.addOnLayoutChangeListener(fabLayout);
-        fabOffset.setTopAndBottomOffset(offset);
-        Animator fabMovement = ObjectAnimator.ofInt(fabOffset, ViewOffsetHelper.OFFSET_Y, 0);
-        fabMovement.setDuration(600L);
-        fabMovement.setInterpolator(interp);
-        fabMovement.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                fab.removeOnLayoutChangeListener(fabLayout);
-            }
-        });
-        fabMovement.start();
-
-        Animator showFab = ObjectAnimator.ofPropertyValuesHolder(fab,
-                PropertyValuesHolder.ofFloat(View.ALPHA, 0f, 1f),
-                PropertyValuesHolder.ofFloat(View.SCALE_X, 0f, 1f),
-                PropertyValuesHolder.ofFloat(View.SCALE_Y, 0f, 1f));
-        showFab.setStartDelay(300L);
-        showFab.setDuration(300L);
-        showFab.setInterpolator(getLinearOutSlowInInterpolator(this));
-        showFab.start();
-    }
-
-    private void doLike() {
+    void doLike() {
         performingLike = true;
         if (fab.isChecked()) {
             final Call<Like> likeCall = dribbblePrefs.getApi().like(shot.id);
@@ -778,6 +676,10 @@ public class DribbbleShot extends Activity {
         }
     }
 
+    boolean isOP(long playerId) {
+        return shot.user != null && shot.user.id == playerId;
+    }
+
     private void checkLiked() {
         if (shot != null && dribbblePrefs.isLoggedIn()) {
             final Call<Like> likedCall = dribbblePrefs.getApi().liked(shot.id);
@@ -798,40 +700,35 @@ public class DribbbleShot extends Activity {
         }
     }
 
-    public void postComment(View view) {
-        if (dribbblePrefs.isLoggedIn()) {
-            if (TextUtils.isEmpty(enterComment.getText())) return;
-            enterComment.setEnabled(false);
-            final Call<Comment> postCommentCall = dribbblePrefs.getApi().postComment(
-                    shot.id, enterComment.getText().toString().trim());
-            postCommentCall.enqueue(new Callback<Comment>() {
-                @Override
-                public void onResponse(Call<Comment> call, Response<Comment> response) {
-                    loadComments();
-                    enterComment.getText().clear();
-                    enterComment.setEnabled(true);
-                }
+    private void setupCommenting() {
+        allowComment = !dribbblePrefs.isLoggedIn()
+                || (dribbblePrefs.isLoggedIn() && dribbblePrefs.userCanPost());
+        if (allowComment && commentFooter == null) {
+            commentFooter = getLayoutInflater().inflate(R.layout.dribbble_enter_comment,
+                    commentsList, false);
+            userAvatar = (ForegroundImageView) commentFooter.findViewById(R.id.avatar);
+            enterComment = (EditText) commentFooter.findViewById(R.id.comment);
+            postComment = (ImageButton) commentFooter.findViewById(R.id.post_comment);
+            enterComment.setOnFocusChangeListener(enterCommentFocus);
+        } else if (!allowComment && commentFooter != null) {
+            adapter.removeCommentingFooter();
+            commentFooter = null;
+            Toast.makeText(getApplicationContext(),
+                    R.string.prospects_cant_post, Toast.LENGTH_SHORT).show();
+        }
 
-                @Override
-                public void onFailure(Call<Comment> call, Throwable t) {
-                    enterComment.setEnabled(true);
-                }
-            });
-        } else {
-            Intent login = new Intent(DribbbleShot.this, DribbbleLogin.class);
-            FabTransform.addExtras(login, ContextCompat.getColor(
-                    DribbbleShot.this, R.color.background_light), R.drawable.ic_comment_add);
-            ActivityOptions options = ActivityOptions.makeSceneTransitionAnimation(
-                    DribbbleShot.this, postComment, getString(R.string.transition_dribbble_login));
-            startActivityForResult(login, RC_LOGIN_COMMENT, options.toBundle());
+        if (allowComment
+                && dribbblePrefs.isLoggedIn()
+                && !TextUtils.isEmpty(dribbblePrefs.getUserAvatar())) {
+            Glide.with(this)
+                    .load(dribbblePrefs.getUserAvatar())
+                    .transform(circleTransform)
+                    .placeholder(R.drawable.ic_player)
+                    .into(userAvatar);
         }
     }
 
-    private boolean isOP(long playerId) {
-        return shot.user != null && shot.user.id == playerId;
-    }
-
-    /* package */ class CommentsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+    class CommentsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
         private static final int EXPAND = 0x1;
         private static final int COLLAPSE = 0x2;
@@ -839,13 +736,13 @@ public class DribbbleShot extends Activity {
         private static final int REPLY = 0x4;
 
         private final List<Comment> comments = new ArrayList<>();
-        private final Transition expandCollapse;
+        final Transition expandCollapse;
         private final View description;
         private View footer;
 
         private boolean loading;
         private boolean noComments;
-        private int expandedCommentPosition = RecyclerView.NO_POSITION;
+        int expandedCommentPosition = RecyclerView.NO_POSITION;
 
         CommentsAdapter(
                 @NonNull View description,
@@ -871,20 +768,6 @@ public class DribbbleShot extends Activity {
                     commentsList.setOnTouchListener(null);
                 }
             });
-        }
-
-        void addComments(List<Comment> newComments) {
-            comments.addAll(newComments);
-            loading = false;
-            noComments = false;
-            notifyDataSetChanged();
-        }
-
-        void removeCommentingFooter() {
-            if (footer == null) return;
-            int footerPos = getItemCount() - 1;
-            footer = null;
-            notifyItemRemoved(footerPos);
         }
 
         @Override
@@ -950,6 +833,24 @@ public class DribbbleShot extends Activity {
             }
         }
 
+        Comment getComment(int adapterPosition) {
+            return comments.get(adapterPosition - 1); // description
+        }
+
+        void addComments(List<Comment> newComments) {
+            hideLoadingIndicator();
+            noComments = false;
+            comments.addAll(newComments);
+            notifyItemRangeInserted(1, newComments.size());
+        }
+
+        void removeCommentingFooter() {
+            if (footer == null) return;
+            int footerPos = getItemCount() - 1;
+            footer = null;
+            notifyItemRemoved(footerPos);
+        }
+
         private CommentViewHolder createCommentHolder(ViewGroup parent, int viewType) {
             final CommentViewHolder holder = new CommentViewHolder(
                     getLayoutInflater().inflate(viewType, parent, false));
@@ -965,7 +866,7 @@ public class DribbbleShot extends Activity {
                     commentAnimator.setAnimateMoves(false);
 
                     // collapse any currently expanded items
-                    if (expandedCommentPosition != RecyclerView.NO_POSITION) {
+                    if (RecyclerView.NO_POSITION != expandedCommentPosition) {
                         notifyItemChanged(expandedCommentPosition, COLLAPSE);
                     }
 
@@ -1134,7 +1035,7 @@ public class DribbbleShot extends Activity {
                             .toString().toLowerCase());
             HtmlUtils.setTextWithNiceLinks(holder.commentBody,
                     comment.getParsedBody(holder.commentBody));
-            holder.likeHeart.setChecked(comment.liked != null && comment.liked.booleanValue());
+            holder.likeHeart.setChecked(comment.liked != null && comment.liked);
             holder.likeHeart.setEnabled(comment.user.id != dribbblePrefs.getUserId());
             holder.likesCount.setText(String.valueOf(comment.likes_count));
             setExpanded(holder, isExpanded);
@@ -1161,19 +1062,21 @@ public class DribbbleShot extends Activity {
             }
         }
 
-        private Comment getComment(int adapterPosition) {
-            return comments.get(adapterPosition - 1); // description
+        private void hideLoadingIndicator() {
+            if (!loading) return;
+            loading = false;
+            notifyItemRemoved(1);
         }
     }
 
-    /* package */ static class SimpleViewHolder extends RecyclerView.ViewHolder {
+    static class SimpleViewHolder extends RecyclerView.ViewHolder {
 
-        public SimpleViewHolder(View itemView) {
+        SimpleViewHolder(View itemView) {
             super(itemView);
         }
     }
 
-    /* package */ static class CommentViewHolder extends RecyclerView.ViewHolder {
+    static class CommentViewHolder extends RecyclerView.ViewHolder {
 
         @BindView(R.id.player_avatar) ImageView avatar;
         @BindView(R.id.comment_author) AuthorTextView author;
@@ -1197,7 +1100,7 @@ public class DribbbleShot extends Activity {
      * custom item animator allows us to stop RecyclerView from trying to handle this for us while
      * the transition is running.
      */
-    /* package */ static class CommentAnimator extends SlideInItemAnimator {
+    static class CommentAnimator extends SlideInItemAnimator {
 
         private boolean animateMoves = false;
 

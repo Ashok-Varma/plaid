@@ -30,7 +30,6 @@ import android.util.Property;
 import io.plaidapp.R;
 import io.plaidapp.util.AnimUtils;
 import io.plaidapp.util.ColorUtils;
-import io.plaidapp.util.ViewOffsetHelper;
 
 /**
  * An image view which supports parallax scrolling and applying a scrim onto it's content. Get it.
@@ -43,7 +42,6 @@ public class ParallaxScrimageView extends FourThreeImageView {
     private final Paint scrimPaint;
     private int imageOffset;
     private int minOffset;
-    private ViewOffsetHelper offsetHelper;
     private Rect clipBounds = new Rect();
     private float scrimAlpha = 0f;
     private float maxScrimAlpha = 1f;
@@ -53,24 +51,23 @@ public class ParallaxScrimageView extends FourThreeImageView {
     private boolean immediatePin = false;
 
     public static final Property<ParallaxScrimageView, Integer> OFFSET =
-            new AnimUtils.IntProperty<ParallaxScrimageView>("offset") {
-
+            AnimUtils.createIntProperty(new AnimUtils.IntProp<ParallaxScrimageView>("offset") {
                 @Override
-                public void setValue(ParallaxScrimageView parallaxScrimageView, int value) {
-                    parallaxScrimageView.setOffset(value);
+                public void set(ParallaxScrimageView parallaxScrimageView, int offset) {
+                    parallaxScrimageView.setOffset(offset);
                 }
 
                 @Override
-                public Integer get(ParallaxScrimageView parallaxScrimageView) {
+                public int get(ParallaxScrimageView parallaxScrimageView) {
                     return parallaxScrimageView.getOffset();
                 }
-            };
+            });
 
     public ParallaxScrimageView(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        final TypedArray a = getContext().obtainStyledAttributes(attrs, R.styleable
-                .ParallaxScrimageView);
+        final TypedArray a = getContext().obtainStyledAttributes(
+                attrs, R.styleable.ParallaxScrimageView);
         if (a.hasValue(R.styleable.ParallaxScrimageView_scrimColor)) {
             scrimColor = a.getColor(R.styleable.ParallaxScrimageView_scrimColor, scrimColor);
         }
@@ -89,21 +86,21 @@ public class ParallaxScrimageView extends FourThreeImageView {
 
         scrimPaint = new Paint();
         scrimPaint.setColor(ColorUtils.modifyAlpha(scrimColor, scrimAlpha));
-        offsetHelper = new ViewOffsetHelper(this);
     }
 
     public int getOffset() {
-        return offsetHelper.getTopAndBottomOffset();
+        return (int) getTranslationY();
     }
 
     public void setOffset(int offset) {
         offset = Math.max(minOffset, offset);
-        if (offset != offsetHelper.getTopAndBottomOffset()) {
-            offsetHelper.setTopAndBottomOffset(offset);
+        if (offset != getTranslationY()) {
+            setTranslationY(offset);
             imageOffset = (int) (offset * parallaxFactor);
-            clipBounds.set(0, 0, getWidth(), getHeight() + Math.round(imageOffset));
+            clipBounds.set(0, -offset, getWidth(), getHeight());
             setClipBounds(clipBounds);
-            setScrimAlpha(Math.min(((float) -offset / getMinimumHeight()) * maxScrimAlpha, maxScrimAlpha));
+            setScrimAlpha(Math.min(
+                    ((float) -offset / getMinimumHeight()) * maxScrimAlpha, maxScrimAlpha));
             postInvalidateOnAnimation();
         }
         setPinned(offset == minOffset);
@@ -130,12 +127,6 @@ public class ParallaxScrimageView extends FourThreeImageView {
         if (h > getMinimumHeight()) {
             minOffset = getMinimumHeight() - h;
         }
-    }
-
-    @Override
-    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-        super.onLayout(changed, left, top, right, bottom);
-        offsetHelper.onViewLayout();
     }
 
     @Override
